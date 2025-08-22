@@ -14,9 +14,20 @@ def main() -> None:
         run_gui()
     else:
         print("Running Blog-Genie in CLI mode...")
-        keyword = "파이썬"
-        content_file = "search_results.txt"
-        run_blog_post_pipeline(keyword=keyword, content_filepath=content_file)
+        # For CLI mode, create a dummy user_input for testing purposes
+        user_input = {
+            "keyword": "파이썬",
+            "target_audience": "일반 대중",
+            "tone_of_voice": "전문적",
+            "desired_length": "보통 (800-1500 단어)",
+            "num_subheadings": 5,
+            "seo_optimization_level": "강화",
+            "image_suggestion_preference": "검색어만 추천",
+            "publishing_platform": "Markdown File Only",
+            "custom_instructions": ""
+        }
+        # content_file is no longer needed as web search is integrated
+        run_blog_post_pipeline(user_input=user_input)
 
 if __name__ == "__main__":
     main()

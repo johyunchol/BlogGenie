@@ -1,33 +1,10 @@
 import sys
 import re
-from datetime import datetime
-
-class WebContentError(Exception):
-    """웹 콘텐츠 수집 관련 오류"""
-    pass
-
-class ContentGenerationError(Exception):
-    """AI 콘텐츠 생성 관련 오류"""
-    pass
-
-def read_web_content_from_file(filepath: str) -> str:
-    """파일에서 웹 콘텐츠를 읽어옵니다."""
-    try:
-        with open(filepath, 'r', encoding='utf-8') as f:
-            return f.read()
-    except FileNotFoundError:
-        raise WebContentError(f"콘텐츠 파일({filepath})을 찾을 수 없습니다.")
-
-import sys
-import re
 import os
 from datetime import datetime
 from dotenv import load_dotenv
 import google.generativeai as genai
 import json
-
-# .env 파일에서 환경 변수 로드
-load_dotenv()
 
 class WebContentError(Exception):
     """웹 콘텐츠 수집 관련 오류"""
@@ -44,15 +21,9 @@ def configure_gemini():
         raise ContentGenerationError("GEMINI_API_KEY가 .env 파일에 설정되지 않았습니다.")
     genai.configure(api_key=api_key)
 
-def read_web_content_from_file(filepath: str) -> str:
-    """파일에서 웹 콘텐츠를 읽어옵니다."""
-    try:
-        with open(filepath, 'r', encoding='utf-8') as f:
-            return f.read()
-    except FileNotFoundError:
-        raise WebContentError(f"콘텐츠 파일({filepath})을 찾을 수 없습니다.")
 
-def generate_blog_content(keyword: str, context: str) -> dict[str, any]:
+
+def generate_blog_content(user_input: dict[str, any], context: str) -> dict[str, any]:
     """수집된 정보를 바탕으로 Gemini를 사용하여 블로그 콘텐츠를 생성합니다."""
     print("Gemini를 사용하여 블로그 콘텐츠 생성을 시작합니다...")
     
@@ -62,9 +33,26 @@ def generate_blog_content(keyword: str, context: str) -> dict[str, any]:
     except Exception as e:
         raise ContentGenerationError(f"Gemini 모델 초기화 중 오류 발생: {e}")
 
+    keyword = user_input.get('keyword', '')
+    target_audience = user_input.get('target_audience', '일반 대중')
+    tone_of_voice = user_input.get('tone_of_voice', '전문적')
+    desired_length = user_input.get('desired_length', '보통 (800-1500 단어)')
+    num_subheadings = user_input.get('num_subheadings', 5)
+    seo_optimization_level = user_input.get('seo_optimization_level', '강화')
+    custom_instructions = user_input.get('custom_instructions', '')
+
     prompt = f"""당신은 SEO에 능숙한 전문 기술 블로거입니다.
 
 아래 제공된 '키워드'와 '참고 자료'를 바탕으로, 독자들이 읽기 쉽고 유용한 블로그 게시물을 작성해주세요.
+사용자 요청에 따라 다음 사항들을 특별히 고려하여 작성해주세요:
+
+**사용자 요청 사항:**
+-   **대상 독자:** {target_audience}
+-   **어조:** {tone_of_voice}
+-   **희망 길이:** {desired_length}
+-   **소제목 개수:** 본문은 서론, 본론({num_subheadings}개 소제목), 결론의 구조를 갖춰야 합니다.
+-   **SEO 최적화 수준:** {seo_optimization_level} (이 수준에 맞춰 제목, 메타 설명, 태그 및 본문 내 키워드 활용도를 조절해주세요.)
+-   **추가 지시사항:** {custom_instructions if custom_instructions else "없음"}
 
 **생성 규칙:**
 1.  **제목 (title):** 키워드를 포함하여, 사람들의 흥미를 끌 만한 매력적인 제목이어야 합니다. 결과물에 불필요한 특수문자 (#, *, " 등)가 포함되지 않게 해야 합니다. 마크다운 형식이 아닌 Plain Text로 작성해야 해야 합니다.
@@ -91,30 +79,67 @@ def generate_blog_content(keyword: str, context: str) -> dict[str, any]:
 }}
 ```
 """
+    
+    MAX_RETRIES = 1
+    MIN_BODY_LENGTH = 500 # Minimum characters for the body content
 
-    try:
-        response = model.generate_content(prompt)
-        # 응답에서 JSON 부분만 추출
-        json_response_text = re.search(r'```json\n(.*?)\n```', response.text, re.DOTALL)
-        if not json_response_text:
-            raise ContentGenerationError("Gemini 응답에서 유효한 JSON 형식을 찾을 수 없습니다.")
-        
-        content_dict = json.loads(json_response_text.group(1))
-        
-        # 태그를 리스트로 변환
-        if isinstance(content_dict.get('tags'), str):
-            content_dict['tags'] = [tag.strip() for tag in content_dict['tags'].split(',')]
-        
-        print("Gemini 블로그 콘텐츠 생성 완료.")
-        return content_dict
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            print(f"DEBUG: Attempt {attempt + 1} - Sending prompt to Gemini...")
+            response = model.generate_content(prompt)
+            response_text = response.text.strip() # Strip whitespace
+            print(f"DEBUG: Gemini Response received. Type: {type(response_text)}, Length: {len(response_text) if isinstance(response_text, str) else 'N/A'}")
+            print(f"DEBUG: Raw Gemini Response: {response_text}") # Added for debugging
 
-    except Exception as e:
-        raise ContentGenerationError(f"Gemini 콘텐츠 생성 중 오류 발생: {e}")
+            content_dict = None
+            # 1. Try to parse the entire response as JSON directly
+            try:
+                content_dict = json.loads(response_text)
+                print("DEBUG: Successfully parsed response as direct JSON.")
+            except json.JSONDecodeError:
+                print("DEBUG: Response is not direct JSON. Trying regex extraction.")
+                # 2. If direct parse fails, try regex extraction
+                json_match = re.search(r'```json\n(.*?)\n```', response_text, re.DOTALL)
+                if json_match:
+                    json_string = json_match.group(1).strip()
+                    print(f"DEBUG: Extracted JSON string via regex. Length: {len(json_string)}")
+                    try:
+                        content_dict = json.loads(json_string)
+                        print("DEBUG: Successfully parsed extracted JSON string.")
+                    except json.JSONDecodeError as e:
+                        raise ContentGenerationError(f"추출된 JSON 문자열 파싱 실패: {e}. 추출된 문자열: {json_string[:200]}...")
+                else:
+                    raise ContentGenerationError("Gemini 응답에서 유효한 JSON 형식을 찾을 수 없습니다. (백틱으로 묶인 JSON 없음)")
+            
+            if not content_dict:
+                raise ContentGenerationError("Gemini 응답에서 유효한 JSON 콘텐츠를 생성하지 못했습니다.")
+            
+            # 태그를 리스트로 변환
+            if isinstance(content_dict.get('tags'), str):
+                content_dict['tags'] = [tag.strip() for tag in content_dict['tags'].split(',')]
+            
+            # Validate content length
+            if len(content_dict.get('body', '')) < MIN_BODY_LENGTH:
+                print(f"경고: 생성된 본문 길이가 너무 짧습니다 ({len(content_dict.get('body', ''))}자). 재시도합니다.")
+                if attempt < MAX_RETRIES:
+                    continue # Retry
+                else:
+                    raise ContentGenerationError(f"유의미한 콘텐츠 생성에 실패했습니다. (최소 {MIN_BODY_LENGTH}자 필요)")
+
+            print("Gemini 블로그 콘텐츠 생성 완료.")
+            return content_dict
+
+        except Exception as e:
+            print(f"콘텐츠 생성 중 오류 발생 (시도 {attempt + 1}/{MAX_RETRIES + 1}): {e}")
+            if attempt < MAX_RETRIES:
+                continue # Retry
+            else:
+                raise ContentGenerationError(f"Gemini 콘텐츠 생성 중 최종 오류 발생: {e}")
 
 
-def find_relevant_images(blog_post_object: dict[str, any]) -> dict[str, any]:
+def find_relevant_images(blog_post_object: dict[str, any], image_suggestion_preference: str) -> dict[str, any]:
     """생성된 블로그 콘텐츠를 기반으로 관련 이미지 검색어를 찾습니다."""
-    print("관련 이미지 검색어 추천을 시작합니다...")
+    print(f"관련 이미지 검색어 추천을 시작합니다. 선호도: {image_suggestion_preference}...")
     body = blog_post_object['body']
     subheadings = re.findall(r"^##\s(.+)", body, re.MULTILINE)
     
@@ -154,14 +179,20 @@ def generate_markdown_content(blog_post_object: dict[str, any], image_suggestion
     print("마크다운 콘텐츠 생성 완료.")
     return content
 
-def save_markdown_to_file(content: str, keyword: str) -> str:
+def save_markdown_to_file(content: str, keyword: str, publishing_platform: str) -> str:
     """마크다운 콘텐츠를 파일로 저장합니다."""
-    print("마크다운 파일 저장을 시작합니다...")
-    today = datetime.now().strftime("%Y%m%d")
-    filename = f"{today}_{keyword.replace(' ', '_')}.md"
+    print(f"마크다운 파일 저장을 시작합니다. 발행 플랫폼: {publishing_platform}...")
     
-    with open(filename, 'w', encoding='utf-8') as f:
-        f.write(content)
-    
-    print(f"마크다운 파일 저장 완료: {filename}")
-    return filename
+    if publishing_platform == "Markdown File Only":
+        today = datetime.now().strftime("%Y%m%d")
+        filename = f"{today}_{keyword.replace(' ', '_')}.md"
+        
+        with open(filename, 'w', encoding='utf-8') as f:
+            f.write(content)
+        
+        print(f"마크다운 파일 저장 완료: {filename}")
+        return filename
+    else:
+        # 향후 Tistory, WordPress 등 API 연동 로직 추가 예정
+        print(f"경고: {publishing_platform} 플랫폼 발행은 아직 지원되지 않습니다. 마크다운 파일로 저장하지 않습니다.")
+        return f"발행되지 않음 (플랫폼: {publishing_platform})"
