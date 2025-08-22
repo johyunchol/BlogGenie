@@ -3,3 +3,5 @@ ruff
 black
 mypy
 python-dotenv
+PyQt6
+google-generativeai
