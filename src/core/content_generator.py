@@ -24,8 +24,8 @@ def configure_gemini():
 
 
 def generate_blog_content(user_input: dict[str, any], context: str) -> dict[str, any]:
-    """수집된 정보를 바탕으로 Gemini를 사용하여 블로그 콘텐츠를 생성합니다."""
-    print("Gemini를 사용하여 블로그 콘텐츠 생성을 시작합니다...")
+    """수집된 정보를 바탕으로 Gemini를 사용하여 구조화된 블로그 콘텐츠를 생성합니다."""
+    print("Gemini를 사용하여 구조화된 블로그 콘텐츠 생성을 시작합니다...")
     
     try:
         configure_gemini()
@@ -34,14 +34,15 @@ def generate_blog_content(user_input: dict[str, any], context: str) -> dict[str,
         raise ContentGenerationError(f"Gemini 모델 초기화 중 오류 발생: {e}")
 
     keyword = user_input.get('keyword', '')
-    target_audience = user_input.get('target_audience', '일반 대중')
+    target_audience = user_input.get('target_audience', '전문가')
     tone_of_voice = user_input.get('tone_of_voice', '전문적')
-    desired_length = user_input.get('desired_length', '보통 (800-1500 단어)')
+    desired_length = user_input.get('desired_length', '길게 (1500+ 단어)')
     num_subheadings = user_input.get('num_subheadings', 5)
     seo_optimization_level = user_input.get('seo_optimization_level', '강화')
     custom_instructions = user_input.get('custom_instructions', '')
 
-    prompt = f"""당신은 SEO에 능숙한 전문 기술 블로거입니다.
+    prompt = f"""
+당신은 SEO에 능숙한 전문 기술 블로거입니다.
 
 아래 제공된 '키워드'와 '참고 자료'를 바탕으로, 독자들이 읽기 쉽고 유용한 블로그 게시물을 작성해주세요.
 사용자 요청에 따라 다음 사항들을 특별히 고려하여 작성해주세요:
@@ -55,13 +56,15 @@ def generate_blog_content(user_input: dict[str, any], context: str) -> dict[str,
 -   **추가 지시사항:** {custom_instructions if custom_instructions else "없음"}
 
 **생성 규칙:**
-1.  **제목 (title):** 키워드를 포함하여, 사람들의 흥미를 끌 만한 매력적인 제목이어야 합니다. 결과물에 불필요한 특수문자 (#, *, " 등)가 포함되지 않게 해야 합니다. 마크다운 형식이 아닌 Plain Text로 작성해야 해야 합니다.
-2.  **메타 설명 (meta_description):** 검색 엔진에 표시될 내용으로, 게시물 전체 내용을 150자 내외로 요약하고 키워드를 포함해야 합니다.
-3.  **본문 (body):
-    *   서론, 본론, 결론의 구조를 갖춰야 합니다.
-    *   Markdown을 사용하여 가독성을 높여주세요. (예: `## 소제목`, `* 리스트`)
-    *   '참고 자료'의 내용을 그대로 복사하지 말고, 자연스럽게 재구성하여 설명해야 합니다.
-4.  **추천 태그 (tags):** 쉼표로 구분된 5개 이상의 관련 태그를 문자열 형태로 추천해주세요. (예: "파이썬, 프로그래밍, 웹개발, AI")
+1.  **title:** 키워드를 포함하여, 사람들의 흥미를 끌 만한 매력적인 제목이어야 합니다. Plain Text로 작성해주세요.
+2.  **meta_description:** 검색 엔진에 표시될 내용으로, 게시물 전체 내용을 150자 내외로 요약하고 키워드를 포함해야 합니다.
+3.  **body (구조화된 본문):**
+    *   **배열(Array) 형태**여야 합니다.
+    *   배열의 각 요소는 **소제목(subtitle), 내용(content), 추천 이미지 키워드(image_keyword)** 세 개의 키를 가진 JSON 객체여야 합니다.
+    *   **subtitle:** 각 단락의 주제를 나타내는 소제목입니다. Markdown 형식이 아닌 Plain Text로 작성해주세요. 서론, 본론, 결론 이라는 단어가 굳이 들어가 필요는 없습니다.
+    *   **content:** 소제목에 대한 상세 내용입니다. Markdown을 사용하여 가독성을 높여주세요. (예: `* 리스트`) '참고 자료'의 내용을 그대로 복사하지 말고, 자연스럽게 재구성하여 설명해야 합니다.
+    *   **image_keyword:** 해당 단락의 내용을 시각적으로 보충할 수 있는 이미지가 효과적일 경우에만, **검색에 용이한 한글 키워드**를 추천해주세요. 예를 들어, 복잡한 개념을 설명하는 다이어그램, 코드 실행 결과를 보여주는 스크린샷, 특정 기술을 상징하는 이미지 등이 좋은 예시입니다. 이미지가 굳이 필요 없거나 글로만 설명하는 것이 더 나은 단락(예: 서론, 결론)의 경우, 반드시 **null** 값을 사용해주세요.
+4.  **tags:** 쉼표로 구분된 5개 이상의 관련 태그를 문자열 형태로 추천해주세요.
 
 **키워드:** {keyword}
 
@@ -74,55 +77,66 @@ def generate_blog_content(user_input: dict[str, any], context: str) -> dict[str,
 {{
     "title": "생성된 제목",
     "meta_description": "생성된 메타 설명",
-    "body": "생성된 Markdown 형식의 본문",
+    "body": [
+        {{
+            "subtitle": "첫 번째 소제목",
+            "content": "첫 번째 단락의 Markdown 형식 내용입니다.",
+            "image_keyword": "첫 번째 단락 관련 이미지 검색어"
+        }},
+        {{
+            "subtitle": "두 번째 소제목",
+            "content": "두 번째 단락의 Markdown 형식 내용입니다.",
+            "image_keyword": "두 번째 단락 관련 이미지 검색어"
+        }}
+    ],
     "tags": "쉼표로 구분된 태그1, 태그2, ..."
 }}
 ```
 """
     
     MAX_RETRIES = 1
-    MIN_BODY_LENGTH = 500 # Minimum characters for the body content
+    MIN_BODY_LENGTH = 300 # Minimum characters for the total body content
 
     for attempt in range(MAX_RETRIES + 1):
         try:
             print(f"DEBUG: Attempt {attempt + 1} - Sending prompt to Gemini...")
             response = model.generate_content(prompt)
-            response_text = response.text.strip() # Strip whitespace
-            print(f"DEBUG: Gemini Response received. Type: {type(response_text)}, Length: {len(response_text) if isinstance(response_text, str) else 'N/A'}")
-            print(f"DEBUG: Raw Gemini Response: {response_text}") # Added for debugging
+            response_text = response.text.strip()
+            print(f"DEBUG: Raw Gemini Response: {response_text}")
 
             content_dict = None
-            # 1. Try to parse the entire response as JSON directly
             try:
                 content_dict = json.loads(response_text)
                 print("DEBUG: Successfully parsed response as direct JSON.")
             except json.JSONDecodeError:
                 print("DEBUG: Response is not direct JSON. Trying regex extraction.")
-                # 2. If direct parse fails, try regex extraction
-                json_match = re.search(r'```json\n(.*?)\n```', response_text, re.DOTALL)
+                json_match = re.search(r'```json(.*?)```', response_text, re.DOTALL)
                 if json_match:
                     json_string = json_match.group(1).strip()
-                    print(f"DEBUG: Extracted JSON string via regex. Length: {len(json_string)}")
                     try:
                         content_dict = json.loads(json_string)
                         print("DEBUG: Successfully parsed extracted JSON string.")
                     except json.JSONDecodeError as e:
                         raise ContentGenerationError(f"추출된 JSON 문자열 파싱 실패: {e}. 추출된 문자열: {json_string[:200]}...")
                 else:
-                    raise ContentGenerationError("Gemini 응답에서 유효한 JSON 형식을 찾을 수 없습니다. (백틱으로 묶인 JSON 없음)")
+                    raise ContentGenerationError("Gemini 응답에서 유효한 JSON 형식을 찾을 수 없습니다.")
             
             if not content_dict:
                 raise ContentGenerationError("Gemini 응답에서 유효한 JSON 콘텐츠를 생성하지 못했습니다.")
             
-            # 태그를 리스트로 변환
             if isinstance(content_dict.get('tags'), str):
                 content_dict['tags'] = [tag.strip() for tag in content_dict['tags'].split(',')]
             
-            # Validate content length
-            if len(content_dict.get('body', '')) < MIN_BODY_LENGTH:
-                print(f"경고: 생성된 본문 길이가 너무 짧습니다 ({len(content_dict.get('body', ''))}자). 재시도합니다.")
+            # Validate body structure and content length
+            body_content = content_dict.get('body', [])
+            if not isinstance(body_content, list) or not all(isinstance(item, dict) for item in body_content):
+                 raise ContentGenerationError("생성된 본문(body)이 유효한 배열 형식이 아닙니다.")
+
+            total_body_length = sum(len(item.get('content', '')) for item in body_content)
+            if total_body_length < MIN_BODY_LENGTH:
+                print(f"경고: 생성된 본문 총 길이가 너무 짧습니다 ({total_body_length}자). 재시도합니다.")
                 if attempt < MAX_RETRIES:
-                    continue # Retry
+                    continue
                 else:
                     raise ContentGenerationError(f"유의미한 콘텐츠 생성에 실패했습니다. (최소 {MIN_BODY_LENGTH}자 필요)")
 
@@ -132,52 +146,51 @@ def generate_blog_content(user_input: dict[str, any], context: str) -> dict[str,
         except Exception as e:
             print(f"콘텐츠 생성 중 오류 발생 (시도 {attempt + 1}/{MAX_RETRIES + 1}): {e}")
             if attempt < MAX_RETRIES:
-                continue # Retry
+                continue
             else:
                 raise ContentGenerationError(f"Gemini 콘텐츠 생성 중 최종 오류 발생: {e}")
 
 
-def find_relevant_images(blog_post_object: dict[str, any], image_suggestion_preference: str) -> dict[str, any]:
-    """생성된 블로그 콘텐츠를 기반으로 관련 이미지 검색어를 찾습니다."""
-    print(f"관련 이미지 검색어 추천을 시작합니다. 선호도: {image_suggestion_preference}...")
-    body = blog_post_object['body']
-    subheadings = re.findall(r"^##\s(.+)", body, re.MULTILINE)
-    
-    queries = {
-        "hero_image_query": f"{blog_post_object['title']} abstract",
-        "section_image_queries": {sh: f"{sh} concept" for sh in subheadings}
-    }
-    print("이미지 검색어 추천 완료.")
-    return queries
-
-def generate_markdown_content(blog_post_object: dict[str, any], image_suggestions: dict[str, any]) -> str:
-    """모든 콘텐츠를 조합하여 최종 마크다운 문자열을 생성합니다."""
+def generate_markdown_content(blog_post_object: dict[str, any]) -> str:
+    """구조화된 콘텐츠 객체를 최종 마크다운 문자열로 조합합니다."""
     print("마크다운 콘텐츠 생성을 시작합니다...")
     
+    title = blog_post_object.get('title', '제목 없음')
+    meta_description = blog_post_object.get('meta_description', '')
+    body_sections = blog_post_object.get('body', [])
+    tags = blog_post_object.get('tags', [])
+
     # Format tags for display
-    tags_formatted = ", ".join([f"#{t}" for t in blog_post_object['tags']])
+    tags_formatted = ", ".join([f"#{t}" for t in tags])
     
-    # Format image suggestions
-    image_queries_formatted = f"- **대표 이미지:** {image_suggestions['hero_image_query']}"
-    for section, query in image_suggestions['section_image_queries'].items():
-        image_queries_formatted += f"\n- **{section} 섹션:** {query}"
+    # Build body from sections
+    body_formatted = ""
+    for section in body_sections:
+        subtitle = section.get('subtitle', '')
+        content = section.get('content', '')
+        image_keyword = section.get('image_keyword')
 
-    content = f"""# {blog_post_object['title']}
+        body_formatted += f"## {subtitle}\n\n"
+        body_formatted += f"{content}\n\n"
+        if image_keyword:
+            body_formatted += f"<!-- Recommended image query: \"{image_keyword}\" -->\n\n"
+        body_formatted += "---\n\n"
 
-> **Meta Description:** {blog_post_object['meta_description']}
+
+    # Combine all parts
+    final_content = f"""# {title}
+
+> **Meta Description:** {meta_description}
 
 ---
-### 이미지 검색어 추천
-{image_queries_formatted}
----
 
-{blog_post_object['body']}
+{body_formatted}
 
----
 **Tags:** {tags_formatted}
 """
     print("마크다운 콘텐츠 생성 완료.")
-    return content
+    return final_content.strip()
+
 
 def save_markdown_to_file(content: str, keyword: str, publishing_platform: str) -> str:
     """마크다운 콘텐츠를 파일로 저장합니다."""
@@ -185,13 +198,15 @@ def save_markdown_to_file(content: str, keyword: str, publishing_platform: str) 
     
     if publishing_platform == "Markdown File Only":
         today = datetime.now().strftime("%Y%m%d")
-        filename = f"{today}_{keyword.replace(' ', '_')}.md"
+        # Sanitize keyword for filename
+        sanitized_keyword = re.sub(r'[\\/*?:\"<>|]', "", keyword).replace(' ', '_')
+        filename = f"{today}_{sanitized_keyword}.md"
         
         with open(filename, 'w', encoding='utf-8') as f:
             f.write(content)
         
         print(f"마크다운 파일 저장 완료: {filename}")
-        return filename
+        return os.path.abspath(filename)
     else:
         # 향후 Tistory, WordPress 등 API 연동 로직 추가 예정
         print(f"경고: {publishing_platform} 플랫폼 발행은 아직 지원되지 않습니다. 마크다운 파일로 저장하지 않습니다.")

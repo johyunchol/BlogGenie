@@ -27,9 +27,8 @@
 *   **처리 과정 (Process):**
     1.  `search_web_for_keyword(user_input['keyword'])`를 호출하여 관련 정보를 수집하고 `context_data`를 받습니다.
     2.  `generate_blog_content(user_input, context_data)`를 호출하여 `blog_post_object`를 생성합니다.
-    3.  `find_relevant_images(blog_post_object, user_input['image_suggestion_preference'])`를 호출하여 `image_suggestions`를 받습니다.
-    4.  `save_as_markdown(blog_post_object, image_suggestions, user_input['publishing_platform'])`를 호출하여 최종 결과물을 파일로 저장하고, 저장된 `file_path`를 받습니다. (향후 `publishing_platform`에 따라 발행 로직 추가)
-    5.  `file_path`를 사용자에게 출력합니다.
+    3.  `save_as_markdown(blog_post_object, user_input['publishing_platform'])`를 호출하여 최종 결과물을 파일로 저장하고, 저장된 `file_path`를 받습니다. (향후 `publishing_platform`에 따라 발행 로직 추가)
+    4.  `file_path`를 사용자에게 출력합니다.
 *   **출력 (Output):**
     *   `file_path` (str): 생성된 마크다운 파일의 절대 경로. (예: `/Users/johndoe/blog_posts/20230822_파이썬_웹_프레임워크_비교.md`)
 *   **예외 처리 (Exception Handling):**
@@ -57,21 +56,15 @@
 
 #### **3. 블로그 콘텐츠 생성 (`generate_blog_content`)**
 
-*   **설명:** 수집된 정보(context)를 바탕으로 AI를 활용하여 실제 블로그 게시물의 구조와 내용을 생성합니다.
+*   **설명:** 수집된 정보(context)와 사용자 요구사항을 바탕으로, AI를 활용하여 구조화된 블로그 게시물 전체를 생성합니다. 이 단계에서 본문은 소제목, 내용, 이미지 키워드를 포함하는 여러 단락으로 나뉩니다.
 *   **입력 (Input):**
     *   `user_input` (dict): `run_blog_post_pipeline`으로부터 전달받은 사용자 입력 딕셔너리.
     *   `context_data` (str): `search_web_for_keyword`로부터 받은 텍스트 덩어리.
 *   **처리 과정 (Process):**
-    1.  **개요 생성:** AI(LLM)에 `context_data`와 `user_input`을 제공하며, 다음 지시사항을 포함하여 서론-본론-결론 구조를 가진 상세한 블로그 개요를 요청하는 프롬프트를 전송합니다.
-        *   `user_input['keyword']`를 핵심 주제로 사용.
-        *   `user_input['num_subheadings']`에 따라 본론의 소제목 개수 조절.
-        *   `user_input['target_audience']`, `user_input['tone_of_voice']`, `user_input['desired_length']`를 고려하여 개요의 상세도 및 구성 조절.
-        *   `user_input['custom_instructions']` 반영.
-    2.  **본문 생성:** 생성된 개요와 `context_data`, `user_input`을 다시 AI에 제공하며, "이 개요와 참고자료를 바탕으로 SEO에 최적화된, 독자가 읽기 쉬운 전문적인 블로그 글을 작성해줘" 라는 프롬프트를 전송하여 본문을 생성합니다. 이때 `user_input['target_audience']`, `user_input['tone_of_voice']`, `user_input['desired_length']`, `user_input['seo_optimization_level']`, `user_input['custom_instructions']`를 적극적으로 반영하여 글의 내용, 스타일, 길이, SEO 요소를 조절합니다.
-    3.  **SEO 요소 생성:** 생성된 본문을 바탕으로 다음 항목들을 별도의 프롬프트로 각각 요청합니다. 이때 `user_input['seo_optimization_level']`을 고려하여 생성합니다.
-        *   **제목:** "이 글의 내용을 대표하는 매력적인 제목 5개를 제안해줘."
-        *   **메타 설명:** "이 글의 내용을 150자 내외로 요약하는 메타 설명을 작성해줘."
-        *   **태그:** "이 글과 관련된 키워드 태그 8개를 추천해줘."
+    1.  **통합 생성 요청:** AI(LLM)에 `context_data`와 `user_input`을 제공하며, 아래의 모든 요소를 포함하는 JSON 객체를 생성하라는 단일 프롬프트를 전송합니다.
+        *   `user_input`의 모든 요소를 고려하여 콘텐츠를 생성하도록 지시합니다. (키워드, 독자층, 어조, 길이, 소제목 개수, SEO 수준, 사용자 정의 지시사항 등)
+        *   **본문(body):** `user_input['num_subheadings']`에 맞춰, 각 단락이 `subtitle`, `content`, `image_keyword` 세 가지 키를 갖는 객체의 배열로 생성되도록 요청합니다. `image_keyword`는 `content` 내용에 가장 적합한 이미지 검색어로 생성하도록 합니다.
+        *   **SEO 요소:** 생성된 본문 전체를 바탕으로 `title`(최종 제목 1개), `suggested_titles`(추천 제목 배열), `meta_description`, `tags`를 생성하도록 요청합니다.
 *   **출력 (Output):**
     *   `blog_post_object` (dict/object): 아래 구조를 가진 객체
         ```json
@@ -80,47 +73,31 @@
           "suggested_titles": ["제목1", "제목2", ...],
           "meta_description": "생성된 메타 설명...",
           "tags": ["태그1", "태그2", ...],
-          "body": "생성된 전체 본문 (마크다운 형식)"
+          "body": [
+            {
+              "subtitle": "첫 번째 단락 소제목",
+              "content": "첫 번째 단락의 내용입니다. 이 단락은 A와 B에 대해 설명합니다.",
+              "image_keyword": "A와 B를 상징하는 이미지"
+            },
+            {
+              "subtitle": "두 번째 단락 소제목",
+              "content": "두 번째 단락의 내용입니다. 여기서는 C의 장점을 자세히 알아봅니다.",
+              "image_keyword": "C의 장점을 보여주는 그래프"
+            }
+          ]
         }
         ```
 *   **예외 처리 (Exception Handling):**
     *   AI(LLM) API 호출 실패 시: "콘텐츠 생성 AI 호출에 실패했습니다." 오류를 발생시킵니다.
-    *   생성된 콘텐츠가 부적절하거나 기준(예: 최소 500자)에 미달할 경우: 재시도를 1회 수행하고, 그래도 실패 시 "유의미한 콘텐츠 생성에 실패했습니다." 오류를 발생시킵니다.
+    *   생성된 JSON의 형식이 올바르지 않을 경우: 재시도를 1회 수행하고, 그래도 실패 시 "유효한 형식의 콘텐츠 생성에 실패했습니다." 오류를 발생시킵니다.
 
 ---
 
-#### **4. 관련 이미지 검색어 추천 (`find_relevant_images`)**
+#### **4. 마크다운 파일 저장 (`save_as_markdown`)**
 
-*   **설명:** 생성된 블로그 본문의 소제목들을 기반으로, 각 섹션에 어울리는 이미지 검색어를 추천합니다.
+*   **설명:** 생성된 구조화된 콘텐츠 객체를 하나의 마크다운 파일로 조합하고 저장합니다.
 *   **입력 (Input):**
-    *   `blog_post_object` (dict/object): `generate_blog_content`로부터 받은 객체.
-    *   `image_suggestion_preference` (str): 사용자가 선택한 이미지 추천 선호도 (예: "Unsplash", "Pexels", "검색어만 추천").
-*   **처리 과정 (Process):**
-    1.  `blog_post_object.body`에서 마크다운 소제목(`##` 또는 `###`)들을 모두 추출합니다.
-    2.  추출된 각 소제목의 핵심 내용을 바탕으로 `image_suggestion_preference`에 따라 저작권 무료 이미지 플랫폼(Unsplash, Pexels 등)에서 사용하기 적합한 영어 검색어를 생성합니다. (예: "## 파이썬의 장점" -> "python programming advantages")
-    3.  블로그의 대표 이미지를 위해 `blog_post_object.title`을 기반으로 한 검색어도 1개 생성합니다.
-*   **출력 (Output):**
-    *   `image_suggestions` (dict): 아래 구조를 가진 딕셔너리
-        ```json
-        {
-          "hero_image_query": "best python web framework",
-          "section_image_queries": {
-            "파이썬의 장점": "python programming advantages",
-            "주요 프레임워크 비교": "comparison chart concept"
-          }
-        }
-        ```
-*   **예외 처리 (Exception Handling):**
-    *   본문에서 소제목을 찾을 수 없는 경우: `section_image_queries`는 빈 객체로 두고, `hero_image_query`만 생성하여 반환합니다.
-
----
-
-#### **5. 마크다운 파일 저장 (`save_as_markdown`)**
-
-*   **설명:** 생성된 모든 콘텐츠를 하나의 마크다운 파일로 조합하고 저장합니다.
-*   **입력 (Input):**
-    *   `blog_post_object` (dict/object): 콘텐츠 객체.
-    *   `image_suggestions` (dict): 이미지 검색어 추천 객체.
+    *   `blog_post_object` (dict/object): `generate_blog_content`로부터 받은 콘텐츠 객체.
     *   `publishing_platform` (str): 사용자가 선택한 발행 플랫폼 (예: "Tistory", "WordPress", "Markdown File Only").
 *   **처리 과정 (Process):**
     1.  `publishing_platform`이 "Markdown File Only"인 경우에만 파일명을 생성합니다. (형식: `YYYYMMDD_키워드.md`, 예: `20230822_파이썬_웹_프레임워크_비교.md`)
@@ -131,16 +108,17 @@
         > **Meta Description:** {blog_post_object.meta_description}
 
         ---
-        ### 이미지 검색어 추천
-        - **대표 이미지:** `{image_suggestions.hero_image_query}`
-        - **섹션 이미지:** 
-        {for-loop over image_suggestions.section_image_queries}
-          - `{section_title}`: `{query}`
-        ---
 
-        {blog_post_object.body}
+        {for-loop over blog_post_object.body}
+        ## {paragraph.subtitle}
+
+        {paragraph.content}
+
+        <!-- Recommended image query: "{paragraph.image_keyword}" -->
 
         ---
+        {end for-loop}
+
         **Tags:** #{tag1}, #{tag2}, ...
         ```
     3.  `publishing_platform`이 "Markdown File Only"인 경우 `write_file` 도구를 사용하여 조합된 문자열을 1번에서 생성한 파일명으로 저장합니다. (향후 각 플랫폼 API를 통한 발행 로직 추가)
